@@ -1,0 +1,42 @@
+services:
+  db:
+    image: postgres:16-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: career
+      POSTGRES_USER: career
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U career -d career']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  api:
+    build: .
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg://career:${POSTGRES_PASSWORD}@db/career
+    depends_on:
+      db:
+        condition: service_healthy
+    ports: ['127.0.0.1:8000:8000']
+    volumes: [artifacts:/app/artifacts, browser:/app/state]
+  worker:
+    build: .
+    restart: unless-stopped
+    command: [python, -m, workers.main]
+    healthcheck:
+      disable: true
+    environment:
+      DATABASE_URL: postgresql+psycopg://career:${POSTGRES_PASSWORD}@db/career
+      JOB_SOURCES_JSON: ${JOB_SOURCES_JSON:-[]}
+    depends_on:
+      api:
+        condition: service_healthy
+    volumes: [artifacts:/app/artifacts, browser:/app/state]
+volumes:
+  pgdata:
+  artifacts:
+  browser:

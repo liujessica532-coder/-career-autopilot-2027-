@@ -1,0 +1,5 @@
+services:
+  api:
+    image: career-autopilot:phase1
+  worker:
+    image: career-autopilot:phase1
