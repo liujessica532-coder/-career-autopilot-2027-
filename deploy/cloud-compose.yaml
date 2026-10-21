@@ -1,5 +1,20 @@
+# Optional managed-cloud override only. Production compose.yaml has no Codex dependency.
 services:
   api:
     image: career-autopilot:phase1
   worker:
     image: career-autopilot:phase1
+    environment:
+      HTTPS_PROXY: ${HTTPS_PROXY}
+      HTTP_PROXY: ${HTTP_PROXY}
+      SSL_CERT_FILE: /run/cloud-ca-bundle.crt
+    extra_hosts: ['${CLOUD_PROXY_HOST:?Use deploy/cloud-up.py}:${CLOUD_PROXY_IP:?Use deploy/cloud-up.py}']
+    volumes: ['/etc/ssl/certs/ca-certificates.crt:/run/cloud-ca-bundle.crt:ro']
+  browser:
+    image: career-autopilot:phase1
+    environment:
+      HTTPS_PROXY: ${HTTPS_PROXY}
+      HTTP_PROXY: ${HTTP_PROXY}
+      BROWSER_CA_FILE: /run/cloud-ca.crt
+    extra_hosts: ['${CLOUD_PROXY_HOST:?Use deploy/cloud-up.py}:${CLOUD_PROXY_IP:?Use deploy/cloud-up.py}']
+    volumes: ['${CODEX_PROXY_CERT:?Cloud CA required}:/run/cloud-ca.crt:ro']

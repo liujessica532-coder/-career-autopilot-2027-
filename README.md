@@ -28,7 +28,7 @@ The default SQLite database supports local tests. Production uses PostgreSQL. Sc
 5. Inspect controls with `BrowserExecutor.inspect(page)` and write a private reviewed site specification. It contains `reviewed:true`, `steps:[{fields:[{selector,profile_key} or {selector,kind:"select",profile_key} or {selector,kind:"file",artifact_id,upload_confirm_selector}],next:"optional selector"}]`, `submit_selector` and a precise `receipt_selector`. Each attachment must belong to this application and its stored SHA256 must match. This phase implements reviewed adapters, not a universal autonomous website solver.
 6. `python -m scripts.manage enqueue-application --application-id ID --spec /secure/site.json` queues upload-only execution. Add `--submit-authorized` only for an application covered by the user's authorization and all verified rules. Worker executes it and records evidence. Preflight pauses on unverified candidate, ineligible job, security challenge, unknown required controls and consent/legal declarations. Never add unchecked guessed values to a mapping.
 
-The executor stores `submitting` before the final click. Ambiguous result creates HumanAction and blocks automated resubmission. An operator must reconcile the employer portal before changing that state. Browser profiles persist in `state/browser` (0700); do not commit, share or log cookies. Login/SMS/CAPTCHA need a future controlled interactive operator session or manual completion; no bypass exists. Step checkpoints and persistent sessions are retained, but form steps are replayed after failures before final submission; arbitrary site-specific mid-form restoration is not guaranteed. Do not mark already-submitted steps as `next`.
+Compose now dispatches browser work to a dedicated persistent service. Human login/SMS/CAPTCHA pauses only that application. Encrypted cookies/storage survive restart; resumed sessions require operator review and never automatically replay POSTs or final submission. An ambiguous final click cannot be retried automatically. See [deployment and human handover](deploy/HANDOVER.md) for the authenticated screenshot interface, key management, migration and receipt reconciliation.
 
 ## Queue and schedules
 
@@ -40,10 +40,9 @@ PostgreSQL `SKIP LOCKED`, atomic claim, unique keys, leases, capped exponential 
 cp .env.example .env
 # Set POSTGRES_PASSWORD to a fresh URL-safe password; chmod 600 .env
 ./deploy/start.sh
-# Restricted home directory: DOCKER_CONFIG=/workspace/career-docker ./deploy/start.sh
 docker compose ps
-docker compose logs --tail 100 api worker
-docker compose restart api worker
+docker compose logs --tail 100 api browser worker
+docker compose restart api browser worker
 curl --fail http://127.0.0.1:8000/health
 ```
 
@@ -61,9 +60,9 @@ When the cloud proxy uses a private CA and its hostname is not resolvable inside
 
 ```bash
 python3 deploy/cloud-build.py
-DOCKER_CONFIG=/workspace/career-docker docker compose -f compose.yaml -f deploy/cloud-compose.yaml up -d --no-build --wait
+python3 deploy/cloud-up.py
 ```
 
 The helper resolves only the existing proxy host and supplies the cloud machine's trusted public CA bundle through a Docker build secret. It does not turn off TLS/signature checks or save proxy credentials. Use the normal deployment script on a directly connected server.
 
-After resolving a HumanAction or a pre-submit failed task, resume with `python -m scripts.manage resume-application --application-id ID --spec /secure/reviewed.json --confirmed`. This cannot resume a submitted or ambiguous final click and preserves the original authorization. Real upload mappings must name a site-specific backend acceptance indicator (`upload_confirm_selector`); setting a file input alone is insufficient.
+For the legacy standalone executor only, after resolving a HumanAction or a pre-submit failed task, resume with `python -m scripts.manage resume-application --application-id ID --spec /secure/reviewed.json --confirmed`. This cannot resume a submitted or ambiguous final click and preserves the original authorization. Real upload mappings must name a site-specific backend acceptance indicator (`upload_confirm_selector`); setting a file input alone is insufficient.

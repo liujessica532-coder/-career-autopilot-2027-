@@ -77,3 +77,16 @@ engine = create_engine(os.getenv('DATABASE_URL', 'sqlite:///artifacts/local.db')
 Session = sessionmaker(engine, expire_on_commit=False)
 def init_db():
     Base.metadata.create_all(engine)
+
+class BrowserSession(Base):
+    __tablename__ = 'browser_sessions'
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey('applications.id'), unique=True)
+    status: Mapped[str] = mapped_column(String, default='active')
+    spec: Mapped[dict] = mapped_column(JSON)
+    cursor: Mapped[int] = mapped_column(default=0)
+    checkpoint: Mapped[dict] = mapped_column(JSON, default=dict)
+    failure_kind: Mapped[str | None] = mapped_column(String)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    capability_hash: Mapped[str | None] = mapped_column(String)
+    capability_expires: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -6,8 +6,8 @@ from adapters.browser import BrowserExecutor, NeedsHuman
 from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
-from sqlalchemy import select, func
-from app.db import init_db, Session, Application, Job, HumanAction, EventLog
+from sqlalchemy import select, func, update
+from app.db import init_db, Session, Application, Job, HumanAction, EventLog, Task
 from app.matching import assess
 from adapters.jobs import parse_job_page
 from workers.queue import enqueue, claim, fail
@@ -32,6 +32,25 @@ def run_task(db, task):
                 job.jd=parsed['jd'];job.assessment=assessment
             # HTTP 200 alone NEVER verifies eligibility or open status.
     elif task.kind == 'apply':
+        service=os.getenv('BROWSER_SERVICE_URL')
+        if service:
+            token=Path(os.environ['OPERATOR_TOKEN_FILE']).read_text().strip()
+            spec={**task.payload['spec'],'submit':task.payload.get('submit',False)}
+            from urllib.parse import urlsplit
+            if urlsplit(service).hostname not in ('browser','localhost','127.0.0.1','::1'):
+                raise ValueError('Browser service must be on the private deployment network')
+            with httpx.Client(trust_env=False,timeout=20) as client:
+                response=client.post(service.rstrip('/')+'/internal/sessions',json={'application_id':task.payload['application_id'],'spec':spec},headers={'Authorization':'Bearer '+token})
+            response.raise_for_status()
+            # Compare-and-set avoids overwriting a fast broker completion/pause.
+            db.expire_all()
+            application=db.get(Application,task.payload['application_id'])
+            state='browser_running'
+            if application.status in ('submitted','simulated','prepared'):state='done'
+            elif application.status in ('needs_human','submission_uncertain'):state='human_required'
+            db.execute(update(Task).where(Task.id==task.id,Task.status=='running').values(status=state,lease_until=None))
+            db.commit()
+            return
         try:
             BrowserExecutor(db).run(task.payload['application_id'], task.payload['spec'], submit=task.payload.get('submit',False))
         except NeedsHuman:
@@ -51,6 +70,8 @@ def run_task(db, task):
 def main():
     init_db()
     while True:
+        Path('state').mkdir(exist_ok=True)
+        Path('state/worker.heartbeat').touch()
         with Session() as db:
             current = datetime.now(ZoneInfo(os.getenv('WORKFLOW_TIMEZONE', 'Asia/Shanghai')))
             enqueue(db, 'discover:'+current.strftime('%Y%m%d%H'), 'discover')

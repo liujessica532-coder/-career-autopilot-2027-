@@ -23,19 +23,59 @@ services:
         condition: service_healthy
     ports: ['127.0.0.1:8000:8000']
     volumes: [artifacts:/app/artifacts, browser:/app/state]
+  browser:
+    build: .
+    restart: unless-stopped
+    init: true
+    command: [./deploy/browser-entrypoint.sh, uvicorn, app.browser_service:app, --host, 0.0.0.0, --port, '8765', --no-access-log]
+    environment:
+      DATABASE_URL: postgresql+psycopg://career:${POSTGRES_PASSWORD}@db/career
+      BROWSER_STATE_DIR: /app/state/browser-service
+      BROWSER_STATE_KEY_FILE: /run/secrets/browser_state_key
+      OPERATOR_TOKEN_FILE: /run/secrets/operator_token
+      BROWSER_HEADLESS: 'false'
+      HANDOVER_ORIGINS: ${HANDOVER_ORIGINS:-http://127.0.0.1:8765,http://localhost:8765}
+    ports: ['127.0.0.1:8765:8765']
+    volumes: [artifacts:/app/artifacts, browser:/app/state]
+    secrets: [browser_state_key, operator_token]
+    shm_size: 1gb
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
   worker:
     build: .
     restart: unless-stopped
     command: [python, -m, workers.main]
     healthcheck:
-      disable: true
+      test: [CMD, python, -m, workers.health]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     environment:
       DATABASE_URL: postgresql+psycopg://career:${POSTGRES_PASSWORD}@db/career
       JOB_SOURCES_JSON: ${JOB_SOURCES_JSON:-[]}
+      BROWSER_SERVICE_URL: http://browser:8765
+      OPERATOR_TOKEN_FILE: /run/secrets/operator_token
     depends_on:
       api:
         condition: service_healthy
+      browser:
+        condition: service_healthy
+    secrets: [operator_token]
     volumes: [artifacts:/app/artifacts, browser:/app/state]
+secrets:
+  browser_state_key:
+    file: ./private/browser-state.key
+  operator_token:
+    file: ./private/operator.token
 volumes:
   pgdata:
   artifacts:
