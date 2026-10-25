@@ -6,6 +6,8 @@ A conservative Python service for a 2027 translation master's graduate targeting
 
 ## Local development
 
+LinkedIn Easy Apply adapter and Cloud Studio validation commands: [deploy/LINKEDIN.md](deploy/LINKEDIN.md). Real LinkedIn submission has not yet been validated; synthetic tests are not real application receipts.
+
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt

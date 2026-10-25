@@ -14,7 +14,21 @@ from workers.queue import enqueue, claim, fail
 import httpx
 
 def run_task(db, task):
-    if task.kind == 'discover':
+    if task.kind in ('linkedin_discover', 'linkedin_apply'):
+        from adapters.linkedin import LinkedInExecutor, discover
+        try:
+            if task.kind == 'linkedin_discover':
+                discover(db, task.payload['search_urls'])
+            else:
+                LinkedInExecutor(db).run(task.payload['application_id'], authorized=task.payload.get('authorized', False), validation=task.payload.get('validation', False))
+        except NeedsHuman:
+            task.status = 'human_required'
+            task.lease_until = None
+            if task.kind == 'linkedin_discover':
+                db.add(HumanAction(reason='LinkedIn discovery requires login or checkpoint review'))
+            db.commit()
+            return
+    elif task.kind == 'discover':
         # Only official sources explicitly configured by the operator. No invented vacancies.
         sources = json.loads(os.getenv('JOB_SOURCES_JSON', '[]'))
         if not sources:
@@ -76,6 +90,9 @@ def main():
             current = datetime.now(ZoneInfo(os.getenv('WORKFLOW_TIMEZONE', 'Asia/Shanghai')))
             enqueue(db, 'discover:'+current.strftime('%Y%m%d%H'), 'discover')
             enqueue(db, 'report:'+current.strftime('%Y%m%d'), 'report')
+            linkedin_searches = json.loads(os.getenv('LINKEDIN_SEARCH_URLS_JSON', '[]'))
+            if linkedin_searches:
+                enqueue(db, 'linkedin-discover:'+current.strftime('%Y%m%d%H'), 'linkedin_discover', {'search_urls': linkedin_searches})
             task = claim(db, lease_seconds=300)
             if task:
                 try:
